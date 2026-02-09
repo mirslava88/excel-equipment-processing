@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Excel files (тестовые)
+*.xlsx
+*.xlsb
+!Промт-задача.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Playwright
+.playwright-mcp/
+
+# Backups
+*_backup.py
+*_old.py
