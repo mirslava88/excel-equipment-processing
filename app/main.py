@@ -247,9 +247,6 @@ HTML_PAGE = """
         <label>📁 База данных (файл с листом "Возврат")</label>
         <input type="file" id="warehouseFile" accept=".xlsx,.xlsb">
         <div class="file-name" id="warehouseFileName"></div>
-        <div style="margin-top: 8px;">
-          <button class="btn-primary" id="btnLoadWarehouse" disabled>Загрузить базу</button>
-        </div>
       </div>
       
       <div class="warehouse-filters hidden" id="warehouseFiltersSection">
@@ -627,16 +624,14 @@ window.switchTab = switchTab;
 // ─── Склад: Управление файлом ───
 let warehouseFileSelected = null;
 
-$('warehouseFile').onchange = e => {
+$('warehouseFile').onchange = async e => {
   warehouseFileSelected = e.target.files[0];
-  $('warehouseFileName').textContent = warehouseFileSelected?.name || '';
-  $('btnLoadWarehouse').disabled = !warehouseFileSelected;
-};
-
-$('btnLoadWarehouse').onclick = async () => {
-  if (!warehouseFileSelected) return;
+  if (!warehouseFileSelected) {
+    $('warehouseFileName').textContent = '';
+    return;
+  }
   
-  $('btnLoadWarehouse').disabled = true;
+  $('warehouseFileName').textContent = warehouseFileSelected.name;
   showStatus('warehouseStatus', 'info', '<span class="spinner"></span> Загрузка базы данных...');
   
   try {
@@ -665,7 +660,6 @@ $('btnLoadWarehouse').onclick = async () => {
     
   } catch (e) {
     showStatus('warehouseStatus', 'err', '❌ Ошибка загрузки: ' + e.message);
-    $('btnLoadWarehouse').disabled = false;
   }
 };
 
