@@ -241,7 +241,17 @@ HTML_PAGE = """
     <div class="card">
       <div class="step-title">📦 Поиск оборудования на складе</div>
       
-      <div class="warehouse-filters">
+      <!-- Загрузка базы данных для склада -->
+      <div class="base-file-section" style="margin-bottom: 24px;">
+        <label>📁 База данных (файл с листом "Возврат")</label>
+        <input type="file" id="warehouseFile" accept=".xlsx,.xlsb">
+        <div class="file-name" id="warehouseFileName"></div>
+        <div style="margin-top: 8px;">
+          <button class="btn-primary" id="btnLoadWarehouse" disabled>Загрузить базу</button>
+        </div>
+      </div>
+      
+      <div class="warehouse-filters hidden" id="warehouseFiltersSection">
         <div>
           <label>Тип оборудования</label>
           <select id="warehouseType" disabled>
@@ -576,11 +586,55 @@ function switchTab(tabName) {
   } else if (tabName === 'warehouse') {
     $('tabWarehouse').classList.add('active');
     event.target.classList.add('active');
-    loadWarehouseData(); // Загрузить данные склада при переключении
   }
 }
 
 window.switchTab = switchTab;
+
+// ─── Склад: Управление файлом ───
+let warehouseFileSelected = null;
+
+$('warehouseFile').onchange = e => {
+  warehouseFileSelected = e.target.files[0];
+  $('warehouseFileName').textContent = warehouseFileSelected?.name || '';
+  $('btnLoadWarehouse').disabled = !warehouseFileSelected;
+};
+
+$('btnLoadWarehouse').onclick = async () => {
+  if (!warehouseFileSelected) return;
+  
+  $('btnLoadWarehouse').disabled = true;
+  showStatus('warehouseStatus', 'info', '<span class="spinner"></span> Загрузка базы данных...');
+  
+  try {
+    const formData = new FormData();
+    formData.append('file', warehouseFileSelected);
+    
+    const r = await fetch(API + '/warehouse/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!r.ok) {
+      const errText = await r.text();
+      throw new Error(errText);
+    }
+    
+    showStatus('warehouseStatus', 'ok', '✓ База данных загружена');
+    
+    // Загружаем данные для фильтров
+    await loadWarehouseData();
+    
+    // Показываем фильтры
+    $('warehouseFiltersSection').classList.remove('hidden');
+    
+    setTimeout(() => $('warehouseStatus').classList.add('hidden'), 2000);
+    
+  } catch (e) {
+    showStatus('warehouseStatus', 'err', '❌ Ошибка загрузки: ' + e.message);
+    $('btnLoadWarehouse').disabled = false;
+  }
+};
 
 // ─── Склад: Загрузка данных ───
 async function loadWarehouseData() {
@@ -888,6 +942,35 @@ def download_all():
 
 
 # ─── Склад ───────────────────────────────────────────────────────────────────
+
+@app.post("/warehouse/upload")
+async def warehouse_upload(file: UploadFile = File(...)):
+    """Загрузить файл базы данных для склада"""
+    try:
+        # Сохраняем файл
+        file_path = save_temp_file(file.file, file.filename)
+        engine = get_engine(file.filename)
+        
+        # Проверяем наличие листа "Возврат"
+        sheets = get_sheet_names(file_path, engine)
+        if "Возврат" not in sheets:
+            raise HTTPException(400, f"Лист 'Возврат' не найден. Доступные листы: {', '.join(sheets)}")
+        
+        # Сохраняем в session_data
+        session_data["base_file"] = {
+            "path": file_path,
+            "engine": engine,
+            "filename": file.filename,
+            "sheets": sheets
+        }
+        
+        return {"status": "ok", "filename": file.filename, "sheets": sheets}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка загрузки файла: {str(e)}")
+
 
 @app.get("/warehouse/types")
 def warehouse_types():
