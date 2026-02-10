@@ -282,9 +282,6 @@ HTML_PAGE = """
         <label>📁 База данных с оборудованием у ТОПа</label>
         <input type="file" id="topFile" accept=".xlsx,.xlsb">
         <div class="file-name" id="topFileName"></div>
-        <div style="margin-top: 8px;">
-          <button class="btn-primary" id="btnLoadTop" disabled>Загрузить базу</button>
-        </div>
       </div>
       
       <div class="warehouse-filters hidden" id="topFiltersSection">
@@ -770,16 +767,14 @@ function displayWarehouseResults(items, total) {
 // ─── ТОП: Управление файлом ───
 let topFileSelected = null;
 
-$('topFile').onchange = e => {
+$('topFile').onchange = async e => {
   topFileSelected = e.target.files[0];
-  $('topFileName').textContent = topFileSelected?.name || '';
-  $('btnLoadTop').disabled = !topFileSelected;
-};
-
-$('btnLoadTop').onclick = async () => {
-  if (!topFileSelected) return;
+  if (!topFileSelected) {
+    $('topFileName').textContent = '';
+    return;
+  }
   
-  $('btnLoadTop').disabled = true;
+  $('topFileName').textContent = topFileSelected.name;
   showStatus('topStatus', 'info', '<span class="spinner"></span> Загрузка базы данных...');
   
   try {
@@ -808,7 +803,6 @@ $('btnLoadTop').onclick = async () => {
     
   } catch (e) {
     showStatus('topStatus', 'err', '❌ Ошибка загрузки: ' + e.message);
-    $('btnLoadTop').disabled = false;
   }
 };
 
