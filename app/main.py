@@ -297,10 +297,6 @@ HTML_PAGE = """
             <option value="">— Выберите пользователя —</option>
           </select>
         </div>
-        <div></div>
-        <div>
-          <button class="btn-primary" id="btnSearchTop" disabled>🔍 Найти</button>
-        </div>
       </div>
       
       <div id="topStatus" class="hidden"></div>
@@ -831,13 +827,14 @@ async function loadTopUsers() {
     
     fillSelect('topUser', data.users);
     $('topUser').disabled = false;
-    $('btnSearchTop').disabled = false;
     
     $('topUser').onchange = () => {
-      $('btnSearchTop').disabled = !$('topUser').value;
+      if ($('topUser').value) {
+        searchTop();
+      } else {
+        $('topResults').innerHTML = '';
+      }
     };
-    
-    $('btnSearchTop').onclick = searchTop;
     
   } catch (e) {
     showStatus('topStatus', 'err', '❌ Ошибка загрузки пользователей: ' + e.message);
