@@ -125,6 +125,33 @@ HTML_PAGE = """
     .file-name { font-size: 0.85rem; color: #666; margin-top: 4px; font-style: italic; }
     .auto-hint { font-size: 0.8rem; color: #667eea; margin-top: 4px; }
     .auto-hint.empty { color: #ff6b6b; }
+    
+    /* Табы навигации */
+    .tabs { display: flex; gap: 8px; margin-bottom: 24px; background: rgba(255,255,255,0.2); 
+            padding: 8px; border-radius: 12px; }
+    .tab { background: transparent; color: #fff; padding: 12px 24px; border-radius: 8px; 
+           border: 2px solid transparent; cursor: pointer; transition: all 0.3s; 
+           font-size: 1rem; font-weight: 600; }
+    .tab:hover { background: rgba(255,255,255,0.1); }
+    .tab.active { background: #fff; color: #667eea; border-color: #fff; 
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* Склад - фильтры */
+    .warehouse-filters { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; 
+                         margin-bottom: 24px; align-items: end; }
+    
+    /* Склад - таблица */
+    .warehouse-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    .warehouse-table th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                          color: #fff; padding: 14px; text-align: left; font-weight: 600; 
+                          font-size: 0.9rem; }
+    .warehouse-table td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 0.9rem; }
+    .warehouse-table tr:hover { background: #f8f9ff; }
+    .warehouse-table tr:last-child td { border-bottom: none; }
+    .warehouse-empty { text-align: center; padding: 40px; color: #666; font-size: 1rem; }
+    .warehouse-count { color: #667eea; font-weight: 700; margin-bottom: 12px; font-size: 1.1rem; }
   </style>
 </head>
 <body>
@@ -132,6 +159,14 @@ HTML_PAGE = """
   <h1>📊 Множественная обработка Excel</h1>
   <p class="subtitle">База данных + неограниченное количество файлов для обработки</p>
 
+  <!-- Табы навигации -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('processing')">📄 Обработка файлов</button>
+    <button class="tab" onclick="switchTab('warehouse')">📦 Склад</button>
+  </div>
+
+  <!-- Вкладка: Обработка файлов -->
+  <div id="tabProcessing" class="tab-content active">
   <!-- STEP 1: Загрузка файлов -->
   <div class="card" id="step1">
     <div class="step-title"><span class="step-num">1</span> Загрузка файлов</div>
@@ -199,7 +234,37 @@ HTML_PAGE = """
       <button class="btn-success" onclick="location.reload()">🔄 Начать заново</button>
     </div>
   </div>
-</div>
+  </div> <!-- /tabProcessing -->
+
+  <!-- Вкладка: Склад -->
+  <div id="tabWarehouse" class="tab-content">
+    <div class="card">
+      <div class="step-title">📦 Поиск оборудования на складе</div>
+      
+      <div class="warehouse-filters">
+        <div>
+          <label>Тип оборудования</label>
+          <select id="warehouseType" disabled>
+            <option value="">— Выберите тип —</option>
+          </select>
+        </div>
+        <div>
+          <label>Модель</label>
+          <select id="warehouseModel" disabled>
+            <option value="">— Все модели —</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn-primary" id="btnSearchWarehouse" disabled>🔍 Найти</button>
+        </div>
+      </div>
+      
+      <div id="warehouseStatus" class="hidden"></div>
+      <div id="warehouseResults"></div>
+    </div>
+  </div>
+
+</div> <!-- /container -->
 
 <script>
 const $ = id => document.getElementById(id);
@@ -497,6 +562,130 @@ function fillSelect(id, items, addEmpty) {
 
 // Делаем функцию removeFile глобальной
 window.removeFile = removeFile;
+
+// ─── Переключение табов ───
+function switchTab(tabName) {
+  // Скрыть все вкладки
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  
+  // Показать выбранную вкладку
+  if (tabName === 'processing') {
+    $('tabProcessing').classList.add('active');
+    event.target.classList.add('active');
+  } else if (tabName === 'warehouse') {
+    $('tabWarehouse').classList.add('active');
+    event.target.classList.add('active');
+    loadWarehouseData(); // Загрузить данные склада при переключении
+  }
+}
+
+window.switchTab = switchTab;
+
+// ─── Склад: Загрузка данных ───
+async function loadWarehouseData() {
+  try {
+    // Загружаем типы оборудования
+    const r = await fetch(API + '/warehouse/types');
+    if (!r.ok) {
+      const errText = await r.text();
+      throw new Error(errText);
+    }
+    const data = await r.json();
+    
+    fillSelect('warehouseType', data.types);
+    $('warehouseType').disabled = false;
+    $('btnSearchWarehouse').disabled = false;
+    
+    // Устанавливаем обработчики
+    $('warehouseType').onchange = async () => {
+      const type = $('warehouseType').value;
+      if (!type) {
+        $('warehouseModel').disabled = true;
+        fillSelect('warehouseModel', []);
+        return;
+      }
+      
+      // Загружаем модели для выбранного типа
+      const r = await fetch(API + `/warehouse/models?type=${encodeURIComponent(type)}`);
+      const d = await r.json();
+      fillSelect('warehouseModel', d.models);
+      $('warehouseModel').disabled = false;
+    };
+    
+    $('btnSearchWarehouse').onclick = searchWarehouse;
+    
+  } catch (e) {
+    showStatus('warehouseStatus', 'err', '❌ Ошибка загрузки данных склада: ' + e.message);
+  }
+}
+
+// ─── Склад: Поиск ───
+async function searchWarehouse() {
+  const type = $('warehouseType').value;
+  if (!type) {
+    showStatus('warehouseStatus', 'err', '❌ Выберите тип оборудования');
+    return;
+  }
+  
+  showStatus('warehouseStatus', 'info', '<span class="spinner"></span> Поиск...');
+  
+  try {
+    const model = $('warehouseModel').value;
+    let url = API + `/warehouse/search?type=${encodeURIComponent(type)}`;
+    if (model) url += `&model=${encodeURIComponent(model)}`;
+    
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    
+    displayWarehouseResults(data.items, data.total);
+    $('warehouseStatus').classList.add('hidden');
+    
+  } catch (e) {
+    showStatus('warehouseStatus', 'err', '❌ Ошибка поиска: ' + e.message);
+  }
+}
+
+// ─── Склад: Отображение результатов ───
+function displayWarehouseResults(items, total) {
+  const container = $('warehouseResults');
+  
+  if (items.length === 0) {
+    container.innerHTML = '<div class="warehouse-empty">🔍 Оборудование не найдено</div>';
+    return;
+  }
+  
+  let html = `<div class="warehouse-count">📦 Найдено: ${total} шт.</div>`;
+  html += '<table class="warehouse-table">';
+  html += '<thead><tr>';
+  html += '<th>Адрес</th>';
+  html += '<th>Корпус/Этаж</th>';
+  html += '<th>Местоположение</th>';
+  html += '<th>Тип оборудования</th>';
+  html += '<th>Марка</th>';
+  html += '<th>Модель</th>';
+  html += '<th>Серийный номер</th>';
+  html += '<th>Инвентарный номер</th>';
+  html += '</tr></thead><tbody>';
+  
+  items.forEach(item => {
+    html += '<tr>';
+    html += `<td>${item['Адрес'] || '-'}</td>`;
+    html += `<td>${item['корпус/этаж'] || '-'}</td>`;
+    html += `<td>${item['Местоположение'] || '-'}</td>`;
+    html += `<td>${item['Тип оборудования'] || '-'}</td>`;
+    html += `<td>${item['Марка'] || '-'}</td>`;
+    html += `<td>${item['Модель'] || '-'}</td>`;
+    html += `<td>${item['Серийный номер'] || '-'}</td>`;
+    html += `<td>${item['Инвентарный номер'] || '-'}</td>`;
+    html += '</tr>';
+  });
+  
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
 </script>
 </body>
 </html>
@@ -696,6 +885,103 @@ def download_all():
         filename="results_all.zip",
         media_type="application/zip"
     )
+
+
+# ─── Склад ───────────────────────────────────────────────────────────────────
+
+@app.get("/warehouse/types")
+def warehouse_types():
+    """Получить уникальные типы оборудования из листа Возврат"""
+    if not session_data.get("base_file"):
+        raise HTTPException(400, "База данных не загружена")
+    
+    try:
+        import pandas as pd
+        from .excel_logic import _read_sheet_safe
+        
+        base = session_data["base_file"]
+        df = _read_sheet_safe(base["path"], base["engine"], "Возврат")
+        
+        if "Тип оборудования" not in df.columns:
+            raise HTTPException(400, "Столбец 'Тип оборудования' не найден на листе 'Возврат'")
+        
+        # Получаем уникальные типы, исключая пустые значения
+        types = df["Тип оборудования"].dropna().unique().tolist()
+        types = sorted([str(t).strip() for t in types if str(t).strip()])
+        
+        return {"types": types}
+    
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка чтения данных: {str(e)}")
+
+
+@app.get("/warehouse/models")
+def warehouse_models(type: str):
+    """Получить модели по типу оборудования"""
+    if not session_data.get("base_file"):
+        raise HTTPException(400, "База данных не загружена")
+    
+    try:
+        import pandas as pd
+        from .excel_logic import _read_sheet_safe
+        
+        base = session_data["base_file"]
+        df = _read_sheet_safe(base["path"], base["engine"], "Возврат")
+        
+        if "Тип оборудования" not in df.columns or "Модель" not in df.columns:
+            raise HTTPException(400, "Необходимые столбцы не найдены")
+        
+        # Фильтруем по типу
+        filtered = df[df["Тип оборудования"] == type]
+        
+        # Получаем уникальные модели
+        models = filtered["Модель"].dropna().unique().tolist()
+        models = sorted([str(m).strip() for m in models if str(m).strip()])
+        
+        return {"models": models}
+    
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка чтения данных: {str(e)}")
+
+
+@app.get("/warehouse/search")
+def warehouse_search(type: str, model: Optional[str] = None):
+    """Поиск оборудования на складе"""
+    if not session_data.get("base_file"):
+        raise HTTPException(400, "База данных не загружена")
+    
+    try:
+        import pandas as pd
+        from .excel_logic import _read_sheet_safe
+        
+        base = session_data["base_file"]
+        df = _read_sheet_safe(base["path"], base["engine"], "Возврат")
+        
+        # Проверяем наличие всех необходимых столбцов
+        required_cols = ["Адрес", "корпус/этаж", "Местоположение", "Тип оборудования", 
+                        "Марка", "Модель", "Серийный номер", "Инвентарный номер"]
+        
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+            raise HTTPException(400, f"Отсутствуют столбцы: {', '.join(missing)}")
+        
+        # Фильтруем по типу
+        filtered = df[df["Тип оборудования"] == type]
+        
+        # Фильтруем по модели, если указана
+        if model:
+            filtered = filtered[filtered["Модель"] == model]
+        
+        # Преобразуем в список словарей
+        items = filtered[required_cols].fillna("").to_dict('records')
+        
+        return {
+            "items": items,
+            "total": len(items)
+        }
+    
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка поиска: {str(e)}")
 
 
 if __name__ == "__main__":
