@@ -726,7 +726,7 @@ function displayWarehouseResults(items, total) {
   items.forEach(item => {
     html += '<tr>';
     html += `<td>${item['Адрес'] || '-'}</td>`;
-    html += `<td>${item['корпус/этаж'] || '-'}</td>`;
+    html += `<td>${item['Корпус/Этаж'] || '-'}</td>`;
     html += `<td>${item['Местоположение'] || '-'}</td>`;
     html += `<td>${item['Тип оборудования'] || '-'}</td>`;
     html += `<td>${item['Марка'] || '-'}</td>`;
@@ -948,7 +948,7 @@ async def warehouse_upload(file: UploadFile = File(...)):
     """Загрузить файл базы данных для склада"""
     try:
         # Сохраняем файл
-        file_path = save_temp_file(file.file, file.filename)
+        file_path = save_temp_file(file)
         engine = get_engine(file.filename)
         
         # Проверяем наличие листа "Возврат"
@@ -1041,7 +1041,7 @@ def warehouse_search(type: str, model: Optional[str] = None):
         df = _read_sheet_safe(base["path"], base["engine"], "Возврат")
         
         # Проверяем наличие всех необходимых столбцов
-        required_cols = ["Адрес", "корпус/этаж", "Местоположение", "Тип оборудования", 
+        required_cols = ["Адрес", "Корпус/Этаж", "Местоположение", "Тип оборудования", 
                         "Марка", "Модель", "Серийный номер", "Инвентарный номер"]
         
         missing = [col for col in required_cols if col not in df.columns]
