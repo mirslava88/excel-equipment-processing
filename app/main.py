@@ -163,6 +163,7 @@ HTML_PAGE = """
   <div class="tabs">
     <button class="tab active" onclick="switchTab('processing')">📄 Обработка файлов</button>
     <button class="tab" onclick="switchTab('warehouse')">📦 Склад</button>
+    <button class="tab" onclick="switchTab('top')">👥 Оборудование у ТОПа</button>
   </div>
 
   <!-- Вкладка: Обработка файлов -->
@@ -271,6 +272,39 @@ HTML_PAGE = """
       
       <div id="warehouseStatus" class="hidden"></div>
       <div id="warehouseResults"></div>
+    </div>
+  </div>
+
+  <!-- Вкладка: Оборудование у ТОПа -->
+  <div id="tabTop" class="tab-content">
+    <div class="card">
+      <div class="step-title">👥 Оборудование у ТОПа</div>
+      
+      <!-- Загрузка базы данных -->
+      <div class="base-file-section" style="margin-bottom: 24px;">
+        <label>📁 База данных с оборудованием у ТОПа</label>
+        <input type="file" id="topFile" accept=".xlsx,.xlsb">
+        <div class="file-name" id="topFileName"></div>
+        <div style="margin-top: 8px;">
+          <button class="btn-primary" id="btnLoadTop" disabled>Загрузить базу</button>
+        </div>
+      </div>
+      
+      <div class="warehouse-filters hidden" id="topFiltersSection">
+        <div>
+          <label>ФИО пользователя</label>
+          <select id="topUser" disabled>
+            <option value="">— Выберите пользователя —</option>
+          </select>
+        </div>
+        <div></div>
+        <div>
+          <button class="btn-primary" id="btnSearchTop" disabled>🔍 Найти</button>
+        </div>
+      </div>
+      
+      <div id="topStatus" class="hidden"></div>
+      <div id="topResults"></div>
     </div>
   </div>
 
@@ -586,6 +620,9 @@ function switchTab(tabName) {
   } else if (tabName === 'warehouse') {
     $('tabWarehouse').classList.add('active');
     event.target.classList.add('active');
+  } else if (tabName === 'top') {
+    $('tabTop').classList.add('active');
+    event.target.classList.add('active');
   }
 }
 
@@ -733,6 +770,137 @@ function displayWarehouseResults(items, total) {
     html += `<td>${item['Модель'] || '-'}</td>`;
     html += `<td>${item['Серийный номер'] || '-'}</td>`;
     html += `<td>${item['Инвентарный номер'] || '-'}</td>`;
+    html += '</tr>';
+  });
+  
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ─── ТОП: Управление файлом ───
+let topFileSelected = null;
+
+$('topFile').onchange = e => {
+  topFileSelected = e.target.files[0];
+  $('topFileName').textContent = topFileSelected?.name || '';
+  $('btnLoadTop').disabled = !topFileSelected;
+};
+
+$('btnLoadTop').onclick = async () => {
+  if (!topFileSelected) return;
+  
+  $('btnLoadTop').disabled = true;
+  showStatus('topStatus', 'info', '<span class="spinner"></span> Загрузка базы данных...');
+  
+  try {
+    const formData = new FormData();
+    formData.append('file', topFileSelected);
+    
+    const r = await fetch(API + '/top/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!r.ok) {
+      const errText = await r.text();
+      throw new Error(errText);
+    }
+    
+    showStatus('topStatus', 'ok', '✓ База данных загружена');
+    
+    // Загружаем список пользователей
+    await loadTopUsers();
+    
+    // Показываем фильтры
+    $('topFiltersSection').classList.remove('hidden');
+    
+    setTimeout(() => $('topStatus').classList.add('hidden'), 2000);
+    
+  } catch (e) {
+    showStatus('topStatus', 'err', '❌ Ошибка загрузки: ' + e.message);
+    $('btnLoadTop').disabled = false;
+  }
+};
+
+// ─── ТОП: Загрузка пользователей ───
+async function loadTopUsers() {
+  try {
+    const r = await fetch(API + '/top/users');
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    
+    fillSelect('topUser', data.users);
+    $('topUser').disabled = false;
+    $('btnSearchTop').disabled = false;
+    
+    $('topUser').onchange = () => {
+      $('btnSearchTop').disabled = !$('topUser').value;
+    };
+    
+    $('btnSearchTop').onclick = searchTop;
+    
+  } catch (e) {
+    showStatus('topStatus', 'err', '❌ Ошибка загрузки пользователей: ' + e.message);
+  }
+}
+
+// ─── ТОП: Поиск ───
+async function searchTop() {
+  const user = $('topUser').value;
+  if (!user) {
+    showStatus('topStatus', 'err', '❌ Выберите пользователя');
+    return;
+  }
+  
+  showStatus('topStatus', 'info', '<span class="spinner"></span> Поиск...');
+  
+  try {
+    const r = await fetch(API + `/top/search?user=${encodeURIComponent(user)}`);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    
+    displayTopResults(data.items, data.total);
+    $('topStatus').classList.add('hidden');
+    
+  } catch (e) {
+    showStatus('topStatus', 'err', '❌ Ошибка поиска: ' + e.message);
+  }
+}
+
+// ─── ТОП: Отображение результатов ───
+function displayTopResults(items, total) {
+  const container = $('topResults');
+  
+  if (items.length === 0) {
+    container.innerHTML = '<div class="warehouse-empty">🔍 Оборудование не найдено</div>';
+    return;
+  }
+  
+  let html = `<div class="warehouse-count">📦 Найдено: ${total} шт.</div>`;
+  html += '<table class="warehouse-table">';
+  html += '<thead><tr>';
+  html += '<th>БЕ</th>';
+  html += '<th>ID актива</th>';
+  html += '<th>Название</th>';
+  html += '<th>Описание класса материала</th>';
+  html += '<th>Серийный номер</th>';
+  html += '<th>Инвентарный номер</th>';
+  html += '<th>Пользователь</th>';
+  html += '<th>ФИО пользователя</th>';
+  html += '<th>Комментарии</th>';
+  html += '</tr></thead><tbody>';
+  
+  items.forEach(item => {
+    html += '<tr>';
+    html += `<td>${item['БЕ'] || '-'}</td>`;
+    html += `<td>${item['ID актива'] || '-'}</td>`;
+    html += `<td>${item['Название'] || '-'}</td>`;
+    html += `<td>${item['Описание класса материала'] || '-'}</td>`;
+    html += `<td>${item['Серийный номер'] || '-'}</td>`;
+    html += `<td>${item['Инвентарный номер'] || '-'}</td>`;
+    html += `<td>${item['Пользователь'] || '-'}</td>`;
+    html += `<td>${item['ФИО пользователя'] || '-'}</td>`;
+    html += `<td>${item['Комментарии'] || '-'}</td>`;
     html += '</tr>';
   });
   
@@ -1054,6 +1222,101 @@ def warehouse_search(type: str, model: Optional[str] = None):
         # Фильтруем по модели, если указана
         if model:
             filtered = filtered[filtered["Модель"] == model]
+        
+        # Преобразуем в список словарей
+        items = filtered[required_cols].fillna("").to_dict('records')
+        
+        return {
+            "items": items,
+            "total": len(items)
+        }
+    
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка поиска: {str(e)}")
+
+
+# ─── ТОП (Оборудование у пользователей) ─────────────────────────────────────
+
+@app.post("/top/upload")
+async def top_upload(file: UploadFile = File(...)):
+    """Загрузить файл с оборудованием у ТОПа"""
+    try:
+        # Сохраняем файл
+        file_path = save_temp_file(file)
+        engine = get_engine(file.filename)
+        
+        # Получаем листы
+        sheets = get_sheet_names(file_path, engine)
+        
+        # Сохраняем в session_data
+        session_data["top_file"] = {
+            "path": file_path,
+            "engine": engine,
+            "filename": file.filename,
+            "sheets": sheets
+        }
+        
+        return {"status": "ok", "filename": file.filename, "sheets": sheets}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка загрузки файла: {str(e)}")
+
+
+@app.get("/top/users")
+def top_users():
+    """Получить уникальные ФИО пользователей"""
+    if not session_data.get("top_file"):
+        raise HTTPException(400, "База данных не загружена")
+    
+    try:
+        import pandas as pd
+        from .excel_logic import _read_sheet_safe
+        
+        top = session_data["top_file"]
+        # Читаем первый лист (предполагаем что данные на первом листе)
+        sheet_name = top["sheets"][0]
+        df = _read_sheet_safe(top["path"], top["engine"], sheet_name)
+        
+        if "ФИО пользователя" not in df.columns:
+            raise HTTPException(400, "Столбец 'ФИО пользователя' не найден")
+        
+        # Получаем уникальные ФИО, исключая пустые значения
+        users = df["ФИО пользователя"].dropna().unique().tolist()
+        users = sorted([str(u).strip() for u in users if str(u).strip()])
+        
+        return {"users": users}
+    
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка чтения данных: {str(e)}")
+
+
+@app.get("/top/search")
+def top_search(user: str):
+    """Поиск оборудования по ФИО пользователя"""
+    if not session_data.get("top_file"):
+        raise HTTPException(400, "База данных не загружена")
+    
+    try:
+        import pandas as pd
+        from .excel_logic import _read_sheet_safe
+        
+        top = session_data["top_file"]
+        sheet_name = top["sheets"][0]
+        df = _read_sheet_safe(top["path"], top["engine"], sheet_name)
+        
+        # Проверяем наличие всех необходимых столбцов
+        required_cols = ["БЕ", "ID актива", "Название", "Описание класса материала", 
+                        "Серийный номер", "Инвентарный номер", "Пользователь", 
+                        "ФИО пользователя", "Комментарии"]
+        
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+            raise HTTPException(400, f"Отсутствуют столбцы: {', '.join(missing)}")
+        
+        # Фильтруем по ФИО пользователя
+        filtered = df[df["ФИО пользователя"] == user]
         
         # Преобразуем в список словарей
         items = filtered[required_cols].fillna("").to_dict('records')
