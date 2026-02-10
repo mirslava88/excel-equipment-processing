@@ -163,7 +163,7 @@ HTML_PAGE = """
     <!-- База данных -->
     <div style="background: #f0f2f5; padding: 16px; border-radius: 10px; margin-bottom: 20px;">
       <h3 style="font-size: 1rem; margin-bottom: 12px; color: #667eea;">База данных</h3>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
         <div>
           <label>Лист</label>
           <select id="baseSheet"></select>
@@ -172,6 +172,11 @@ HTML_PAGE = """
           <label>Столбец с серийными номерами</label>
           <select id="baseSerial" disabled></select>
           <div class="auto-hint" id="hintBaseSerial"></div>
+        </div>
+        <div>
+          <label>Столбец с датой</label>
+          <select id="baseDate" disabled></select>
+          <div class="auto-hint" id="hintBaseDate"></div>
         </div>
       </div>
     </div>
@@ -294,15 +299,22 @@ $('baseSheet').onchange = async () => {
   const r = await fetch(API + `/columns?file_type=base&sheet=${encodeURIComponent(sheet)}`);
   const d = await r.json();
   fillSelect('baseSerial', d.columns);
+  fillSelect('baseDate', d.columns);
   $('baseSerial').disabled = false;
+  $('baseDate').disabled = false;
   if (d.detected_serial) {
     $('baseSerial').value = d.detected_serial;
     $('hintBaseSerial').textContent = '↑ Автоопределён: ' + d.detected_serial;
+  }
+  if (d.detected_date) {
+    $('baseDate').value = d.detected_date;
+    $('hintBaseDate').textContent = '↑ Автоопределён: ' + d.detected_date;
   }
   checkProcessReady();
 };
 
 $('baseSerial').onchange = checkProcessReady;
+$('baseDate').onchange = checkProcessReady;
 
 function createFileConfig(idx, info) {
   const div = document.createElement('div');
@@ -372,7 +384,7 @@ function createFileConfig(idx, info) {
 }
 
 function checkProcessReady() {
-  const baseReady = $('baseSerial').value;
+  const baseReady = $('baseSerial').value && $('baseDate').value;
   $('btnProcess').disabled = !baseReady;
 }
 
@@ -384,6 +396,7 @@ $('btnProcess').onclick = async () => {
   const config = {
     base_sheet: $('baseSheet').value,
     base_serial: $('baseSerial').value,
+    base_date: $('baseDate').value,
     files_config: []
   };
   
@@ -612,7 +625,8 @@ async def process_multiple(config: dict):
                 sheet2=config["base_sheet"],
                 serial_col1=file_config["serial_col"],
                 serial_col2=config["base_serial"],
-                date_col=file_config["date_col"],
+                date_col1=file_config["date_col"],
+                date_col2=config["base_date"],
                 compare=file_config["compare"],
                 tech_refresh=file_config["tech_refresh"]
             )

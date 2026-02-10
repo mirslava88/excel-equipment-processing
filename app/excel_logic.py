@@ -401,7 +401,8 @@ def process_excels(
     sheet2: str,
     serial_col1: str,
     serial_col2: str,
-    date_col: str,
+    date_col1: str,
+    date_col2: str,
     compare: bool = True,
     tech_refresh: bool = True,
 ) -> str:
@@ -409,7 +410,8 @@ def process_excels(
     Основная логика:
     1. Сравнивает серийные номера из двух листов (если compare=True).
     2. Добавляет столбец 'Передано на склад' (если compare=True).
-    3. Если указан столбец даты и tech_refresh=True — добавляет столбец 'Оборудование устарело'.
+    3. Если tech_refresh=True — сравнивает серийники с базой данных, 
+       берет дату из базы и определяет устаревание (>5 лет).
     Возвращает путь к результирующему .xlsx файлу.
     """
     df1 = _read_sheet_safe(path1, engine1, sheet1)
@@ -447,30 +449,46 @@ def process_excels(
             df1["Передано на склад"] = "Нет (лист 'Возврат' не найден)"
 
     # Техрефреш оборудования (опционально)
-    if tech_refresh and date_col and date_col in df1.columns:
-        dates = pd.to_datetime(df1[date_col], errors="coerce")
-        years = dates.dt.year
-        age = CURRENT_YEAR - years
-
+    if tech_refresh and date_col2 and date_col2 in df2.columns:
+        # Нормализуем серийные номера в обоих файлах
+        df1_serials = df1[serial_col1].astype(str).str.strip().str.lower()
+        df2_serials = df2[serial_col2].astype(str).str.strip().str.lower()
+        
+        # Создаем маппинг: серийный номер -> дата из базы данных
+        serial_to_date = dict(zip(df2_serials, df2[date_col2]))
+        
         # Инициализируем столбец
-        df1["Оборудование устарело"] = "Нет"
+        df1["Оборудование устарело"] = "Не найдено в базе данных"
         
-        # Критическое устаревание (> 9 лет)
-        critical_mask = age > CRITICAL_AGE_YEARS
-        df1.loc[critical_mask, "Оборудование устарело"] = age[critical_mask].apply(
-            lambda x: f"Критично, {_pluralize_years(x)}"
-        )
-        
-        # Обычное устаревание (> 5 лет, <= 9 лет)
-        outdated_mask = (age > TECH_REFRESH_YEARS) & (age <= CRITICAL_AGE_YEARS)
-        df1.loc[outdated_mask, "Оборудование устарело"] = age[outdated_mask].apply(
-            lambda x: f"Да, {_pluralize_years(x)}"
-        )
-        
-        # Если дата не распознана — пометить
-        df1.loc[dates.isna() & df1[date_col].notna(), "Оборудование устарело"] = (
-            "Не найдено в базе данных"
-        )
+        # Для каждого серийника из файла обработки ищем дату в базе
+        for idx, serial in enumerate(df1_serials):
+            if serial in serial_to_date:
+                date_val = serial_to_date[serial]
+                
+                # Извлекаем год из даты
+                year = None
+                if pd.notna(date_val):
+                    if isinstance(date_val, (pd.Timestamp, datetime)):
+                        year = date_val.year
+                    else:
+                        # Попытка парсинга строки
+                        date_str = str(date_val).strip()
+                        for fmt in ['%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y']:
+                            try:
+                                year = datetime.strptime(date_str, fmt).year
+                                break
+                            except:
+                                continue
+                
+                if year:
+                    age = CURRENT_YEAR - year
+                    
+                    if age <= TECH_REFRESH_YEARS:
+                        df1.loc[idx, "Оборудование устарело"] = "Нет"
+                    elif age <= CRITICAL_AGE_YEARS:
+                        df1.loc[idx, "Оборудование устарело"] = f"Да, {_pluralize_years(age)}"
+                    else:
+                        df1.loc[idx, "Оборудование устарело"] = f"Критично, {_pluralize_years(age)}"
 
     out_path = os.path.join(tempfile.gettempdir(), "result.xlsx")
     df1.to_excel(out_path, index=False)
